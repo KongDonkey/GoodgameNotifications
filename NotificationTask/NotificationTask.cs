@@ -11,162 +11,126 @@ using GoodGameUtils;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 using Newtonsoft.Json;
+using Windows.Web;
+using Windows.Foundation;
+using System.Xml.Serialization;
+using System.IO;
+using System.Diagnostics;
 
 namespace NotificationTask
 {
-    
+
 
     public sealed class NotificationTask : IBackgroundTask
     {
 
-        public bool Connected
-        {
-            get
-            {
-                return _connected;
-            }
-        }
-
         public async void Run(IBackgroundTaskInstance taskInstance)
         {
-            var localSettings = ApplicationData.Current.LocalSettings;
-            string login = (string)localSettings.Values["login"];
-            string password = (string)localSettings.Values["password"];
-            
-            var deferral = taskInstance.GetDeferral();
+            try {
+                //taskInstance.TriggerDetails;
+                string login = (string)localSettings.Values["login"];
+                string password = (string)localSettings.Values["password"];
+                DateTime date = new DateTime();
+                bool date_is_ok = DateTime.TryParse((string)localSettings.Values["date"], out date);
+                if (!date_is_ok)
+                    goto channels_expired;
+                if ((date - DateTime.Now).TotalHours > 2)
+                    goto channels_expired;
 
-            if (!_connected)
-            {
+                channels = (List<FavoriteChannel>)DeserializeObject<List<FavoriteChannel>>((string)localSettings.Values["channels"], typeof(List<FavoriteChannel>));
+
+            channels_expired:
+                var deferral = taskInstance.GetDeferral();
+
                 try
                 {
-
                     gg = new Goodgame(login, password);
-
-                    try
-                    {
-                        await gg.Connect();
-                    }
-                    catch (Exception e)
-                    {
-                        throw;
-                    }
-
-                    List<FavoriteChannel> channels;
-                    try
-                    {
-                        channels = await gg.GetFavoriteChannels();
-                    }
-                    catch (Exception e)
-                    {
-                        //Just ignore it
-                        return;
-                    }
-
-                    _connected = true;
-                    Goodgame.DisplayNotification(channels);
-                    cookies = gg.Cookies;
-                    foreach (HttpCookie cookie in cookies)
-                    {
-                        if (cookie.Name == "ggtoken")
-                        {
-                            ggtoken = cookie.Value;
-                        }
-                        if (cookie.Name == "uid")
-                        {
-                            uid = Convert.ToInt32(cookie.Value);
-                        }
-                    }
-
-                    RegisterCCT();
-
+                    await gg.Connect();
+                    Goodgame.DisplayNotification(await UpdateChannels());
                 }
-                catch (Exception)
+                catch (InvalidCredentialsException e)
                 {
-
+                    Debug.WriteLine("Login or password is empty string", e.Message);
                 }
-            }
+                catch (WrongCredentialsException e)
+                {
+                    Debug.WriteLine("Server didnt accept your login/password", e.Message);
+                }
+                catch (NullReferenceException e)
+                {
+                    Debug.WriteLine("Null reference exception", e.Message);
+                }
+                catch (NetworkException e)
+                {
+                    Debug.WriteLine("Something wrong with network", e.Message);
+                }
 
-            
 
-            deferral.Complete();
-        }
+                deferral.Complete();
 
-        private async void RegisterCCT()
-        {
-            try
-            {
-                channel = new ControlChannelTrigger("channelOne", 30, ControlChannelTriggerResourceType.RequestSoftwareSlot);
-            }
-            catch (UnauthorizedAccessException e)
-            {
-                //log
-                return;
+
             }
             catch (Exception e)
             {
-                return;
+                Debug.WriteLine("Unknown exception", e.Message);
             }
+        }
 
-            // Register the apps background task with the trigger for keepalive. 
-            var keepAliveBuilder = new BackgroundTaskBuilder();
-            keepAliveBuilder.Name = "KeepaliveTaskForChannelOne";
-            keepAliveBuilder.TaskEntryPoint = WebSocketKeepAliveTask;
-            keepAliveBuilder.SetTrigger(channel.KeepAliveTrigger);
-            keepAliveBuilder.Register();
-
+        private async Task<List<FavoriteChannel>> UpdateChannels()
+        {
+            var result = new List<FavoriteChannel>();
+            List<FavoriteChannel> new_channels;
             try
             {
-                socket = new MessageWebSocket();
-                channel.UsingTransport(socket);
-                socket.SetRequestHeader("Cookie", gg.Cookies);
-                socket.SetRequestHeader("Origin", "http://goodgame.ru");
-                socket.SetRequestHeader("Host", "notify.goodgame.ru:8087");
-                socket.MessageReceived += Socket_MessageReceived;
-                await socket.ConnectAsync(new Uri("ws://notify.goodgame.ru:8087/"));
-                messageWriter = new DataWriter(socket.OutputStream);
+                new_channels = await gg.GetFavoriteChannels();
+                
+                foreach (var ch in new_channels)
+                {
+                    if (!channels.Contains(ch))
+                    {
+                        result.Add(ch);
+                    }
+                }
             }
-            catch
+            catch (Exception)
             {
-
+                //Just ignore it
+                return null;
             }
 
+            channels = new_channels;
+            localSettings.Values["channels"] = SerializeObject(channels);
+            localSettings.Values["date"] = DateTime.Now.ToString();
+            return result;
         }
 
-        private void Socket_MessageReceived(MessageWebSocket sender, MessageWebSocketMessageReceivedEventArgs args)
+        static string SerializeObject<T>(T toSerialize)
         {
-            dynamic message = ReadMessage(args);
+            XmlSerializer xmlSerializer = new XmlSerializer(toSerialize.GetType());
 
-            //Subscribe
-            if (message.type == "{welcome}")
+            using (StringWriter textWriter = new StringWriter())
             {
-                //messageWriter.WriteString(JsonConvert.SerializeObject
-            }
-            else if (message.type == "canSubscribe" && message.data.answer == "{ok}")
-            {
-
+                xmlSerializer.Serialize(textWriter, toSerialize);
+                return textWriter.ToString();
             }
         }
 
-        private dynamic ReadMessage(MessageWebSocketMessageReceivedEventArgs args)
+        static object DeserializeObject<T>(string toDeserialize, Type t)
         {
-            DataReader messageReader = args.GetDataReader();
-            messageReader.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
-            string messageString = messageReader.ReadString(messageReader.UnconsumedBufferLength);
+            XmlSerializer xmlSerializer = new XmlSerializer(t);
+            object result;
 
-            dynamic welcome = JsonConvert.DeserializeObject(messageString);
-            return welcome;
+            using (StringReader text = new StringReader(toDeserialize))
+            {
+                
+                result = xmlSerializer.Deserialize(text);
+            }
+
+            return result;
         }
 
-        ControlChannelTrigger channel;
-        const string channelId = "goodgamenotifier";
-        const int serverKeepAliveInterval = 2;
-        const string WebSocketKeepAliveTask = "Windows.Networking.Sockets.WebSocketKeepAlive";
-        bool _connected = false;
-        MessageWebSocket socket;
-        HttpCookieCollection cookies;
         Goodgame gg;
-        private DataWriter messageWriter;
-        private string ggtoken;
-        private int uid;
+        List<FavoriteChannel> channels = new List<FavoriteChannel>();
+        ApplicationDataContainer localSettings = ApplicationData.Current.LocalSettings;
     }
 }

@@ -20,55 +20,16 @@ namespace GoodGameUtils
     {
         public Goodgame()
         {
-            /*var configuration = new LoggingConfiguration();
-#if DEBUG
-            configuration.AddTarget(LogLevel.Trace, LogLevel.Fatal, new DebugTarget());
-#endif
-            configuration.AddTarget(LogLevel.Trace, LogLevel.Fatal, new StreamingFileTarget());
-            configuration.IsEnabled = true;
-
-            LogManagerFactory.DefaultConfiguration = configuration;
-
-            m_log = LogManagerFactory.DefaultLogManager.GetLogger<Goodgame>();*/
-
             Goodgame.ClearAllCookies();
         }
 
         public Goodgame(string login, string password) : this()
         {
-            this.Login = login;
-            this.Password = password;
-        }
-
-        public string Login
-        {
-            set
-            {
-                if (value.Length == 0)
-                    throw new InvalidCredentialsException("Login is empty");
-                else
-                    m_login = value;
-            }
-            get
-            {
-                return m_login;
-            }
-        }
-
-        public string Password
-        {
-            set
-            {
-                if (value.Length == 0)
-                    throw new InvalidCredentialsException("Password is empty");
-                else
-                    m_password = value;
-            }
-            get
-            {
-                return m_password;
-            }
-        }
+            m_login = login;
+            m_password = password;
+            if (m_login == null || m_password == null)
+                throw new NullReferenceException("Goodgame.ctor failed: login or password is null");
+        }   
 
         public async Task Connect()
         {
@@ -92,23 +53,19 @@ namespace GoodGameUtils
             client.DefaultRequestHeaders.Add("Origin", "http://goodgame.ru");
             client.DefaultRequestHeaders.Add("Referer", "http://goodgame.ru/");
 
-
-
             //Initial request for cookies
             try
             {
                 response = await client.SendRequestAsync(request, HttpCompletionOption.ResponseHeadersRead);
-
             }
             catch (Exception e)
             {
-                Log("No cookies", e);
                 throw new NetworkException("Initial put request failed", e);
             }
 
             var content = await response.Content.ReadAsStringAsync();
-            if (content.Contains("=false"))
-                throw new WrongCredentialsException(); ;
+            if (!content.Contains("true")) //FIXME
+                throw new WrongCredentialsException();
 
             //Confirm
             request = new HttpRequestMessage(HttpMethod.Get, new Uri(GG_MAINPAGE_URL));
@@ -119,7 +76,6 @@ namespace GoodGameUtils
             }
             catch (Exception e)
             {
-                Log("Confirmation request failed", e);
                 throw new NetworkException("Confirmation request failed", e);
             }
 
@@ -129,7 +85,6 @@ namespace GoodGameUtils
 
         public async Task<List<FavoriteChannel>> GetFavoriteChannels()
         {
-
             if (!m_connectionEstablished)
                 throw new NetworkException("Not connected");
 
@@ -143,8 +98,6 @@ namespace GoodGameUtils
             }
             catch (Exception e)
             {
-                Log("SendRequestAsync put request failed", e);
-                m_cookies = null;
                 throw new NetworkException("SendRequestAsync get request failed", e);
             }
 
@@ -180,52 +133,41 @@ namespace GoodGameUtils
         public static void DisplayNotification(List<FavoriteChannel> streams)
         {
             //Nothing to do if no streams online
-            if (streams.Count == 0)
+            if (streams == null || streams.Count == 0)
                 return;
 
             var toast = ToastContentFactory.CreateToastText02();
             if (streams.Count > 1)
             {
-                toast.TextHeading.Text = streams[0].Name + " and other " + (streams.Count - 1) + " streams are currently online!";
-                toast.TextBodyWrap.Text = "Click me to watch them!";
-                toast.Launch = "toast://many_online";
+                foreach (var stream in streams)
+                {
+                    toast.TextHeading.Text += (stream.Name + " ");
+                }           
+                toast.Launch = "http://goodgame.ru/channels/favorites/";
 
             }
             else {
-                toast.TextHeading.Text = streams[0].Name + " are online!";
-                toast.TextBodyWrap.Text = "Click me to watch it!";
+                toast.TextHeading.Text = streams[0].Name;
                 toast.Launch = streams[0].Uri;
             }
+            toast.TextBodyWrap.Text = "are now live!";
 
             var notification = toast.CreateNotification();
-            if (streams.Count > 1)
-                notification.Activated += ToastMany_Activated;
-            else
-                notification.Activated += ToastOne_Activated;
+            notification.Activated += Toast_Activated;
+
             ToastNotificationManager.CreateToastNotifier().Show(notification);
         }
 
-        public static async void ToastOne_Activated(ToastNotification sender, object args)
+        public static async void Toast_Activated(ToastNotification sender, object args)
         {
             await Windows.System.Launcher.LaunchUriAsync(new Uri((string)args));
-        }
-
-        public static async void ToastMany_Activated(ToastNotification sender, object args)
-        {
-            string favUrl = @"http://www.goodgame.ru/channels/favorites";
-            await Windows.System.Launcher.LaunchUriAsync(new Uri(favUrl));
-        }
-
-        private void Log(string message, Exception e = null, [CallerFilePath] string filePath = "", [CallerLineNumber] int lineNumber = 0)
-        {
-            //m_log.Warn(message, e);
         }
 
         public static void ClearAllCookies()
         {
             Windows.Web.Http.Filters.HttpBaseProtocolFilter filter = new Windows.Web.Http.Filters.HttpBaseProtocolFilter();
-            filter.CacheControl.ReadBehavior = Windows.Web.Http.Filters.HttpCacheReadBehavior.MostRecent;
-            filter.CacheControl.WriteBehavior = Windows.Web.Http.Filters.HttpCacheWriteBehavior.NoCache;
+            //filter.CacheControl.ReadBehavior = Windows.Web.Http.Filters.HttpCacheReadBehavior.MostRecent;
+            //filter.CacheControl.WriteBehavior = Windows.Web.Http.Filters.HttpCacheWriteBehavior.NoCache;
             var cookies = filter.CookieManager.GetCookies(new Uri(LOGIN_URL));
 
             foreach (HttpCookie cookie in cookies)
@@ -233,17 +175,6 @@ namespace GoodGameUtils
                 filter.CookieManager.DeleteCookie(cookie);
             }
         }
-
-        public HttpCookieCollection Cookies
-        {
-            get
-            {
-                Windows.Web.Http.Filters.HttpBaseProtocolFilter filter = new Windows.Web.Http.Filters.HttpBaseProtocolFilter();
-
-                return filter.CookieManager.GetCookies(new Uri(LOGIN_URL));
-            }
-        }
-
 
         private HttpCookieCollection m_cookies;
         private string m_login;

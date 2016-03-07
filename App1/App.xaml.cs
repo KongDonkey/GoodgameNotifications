@@ -46,14 +46,9 @@ namespace App1
         /// <param name="e">Сведения о запросе и обработке запуска.</param>
         protected override void OnLaunched(LaunchActivatedEventArgs e)
         {
-            if (e.Arguments == "toast://many_online")
+            if (e.Arguments.Length != 0)
             {
-                Goodgame.ToastMany_Activated(null, null);
-                Exit();
-            }
-            else if (e.Arguments.Length != 0)
-            {
-                Goodgame.ToastOne_Activated(null, e.Arguments);
+                Goodgame.Toast_Activated(null, e.Arguments);
                 Exit();
             }
 

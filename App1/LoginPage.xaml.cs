@@ -28,6 +28,7 @@ using Windows.UI.Notifications;
 using HtmlAgilityPack;
 using NotificationsExtensions.ToastContent;
 using GoodGameUtils;
+using System.Diagnostics;
 
 // Шаблон элемента пустой страницы задокументирован по адресу http://go.microsoft.com/fwlink/?LinkId=234238
 
@@ -69,14 +70,14 @@ namespace App1
             //
 
             var builder = new BackgroundTaskBuilder();
-
+            var trigger = new TimeTrigger(15, false);
             builder.Name = _taskName;
             builder.TaskEntryPoint = _taskEntryPoint;
-            builder.SetTrigger(new SystemTrigger(SystemTriggerType.InternetAvailable, false));
+            builder.SetTrigger(trigger);
 
             BackgroundTaskRegistration task = builder.Register();
-            //task.Completed += new BackgroundTaskCompletedEventHandler(OnCompleted);
-       
+
+
 
             return task;
         }
@@ -105,11 +106,16 @@ namespace App1
                 return;
             }
 
+            try {
+                ConnectToGG();
 
-            ConnectToGG();
-
-            RegisterBackgroundTask();
-            RequestLockScreenAccess();
+                RegisterBackgroundTask();
+                RequestLockScreenAccess();
+            }
+            catch (Exception e)
+            {
+                MessageDialog md = new MessageDialog("}|{OIIA", e.Message);
+            }
 
             this.Frame.Navigate(typeof(SettingsPage));
         }
@@ -120,25 +126,21 @@ namespace App1
             if (status == BackgroundAccessStatus.Unspecified || status == BackgroundAccessStatus.Denied)
                 status = await BackgroundExecutionManager.RequestAccessAsync();
 
-            MessageDialog md = new MessageDialog("");
-
             switch (status)
             {
                 case BackgroundAccessStatus.AllowedWithAlwaysOnRealTimeConnectivity:
-                    md.Content = "This app is on the lock screen and has access to Always-On Real Time Connectivity.";
+                    Debug.WriteLine("This app is on the lock screen and has access to Always-On Real Time Connectivity.");
                     break;
                 case BackgroundAccessStatus.AllowedMayUseActiveRealTimeConnectivity:
-                    md.Content = "This app is on the lock screen and has access to Active Real Time Connectivity.";
+                    Debug.WriteLine("This app is on the lock screen and has access to Active Real Time Connectivity.");
                     break;
                 case BackgroundAccessStatus.Denied:
-                    md.Content = "This app is not on the lock screen.";
+                    Debug.WriteLine("This app is not on the lock screen.");
                     break;
                 case BackgroundAccessStatus.Unspecified:
-                    md.Content = "The user has not yet taken any action. This is the default setting and the app is not on the lock screen.";
+                    Debug.WriteLine("The user has not yet taken any action. This is the default setting and the app is not on the lock screen.");
                     break;
             }
-
-            md.ShowAsync();
         }
 
         private async void ConnectToGG()
@@ -151,7 +153,7 @@ namespace App1
             try {
                 await gg.Connect();
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 throw;
             }
@@ -160,9 +162,8 @@ namespace App1
             try {
                 channels = await gg.GetFavoriteChannels();
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                //Just ignore it
                 return;
             }
 
@@ -170,99 +171,5 @@ namespace App1
             
         }
 
-        private async void Old()
-        {
-            var localSettings = ApplicationData.Current.LocalSettings;
-            string loginUrl = "http://goodgame.ru/ajax/login/";
-            string subscriptionUrl = "http://goodgame.ru/ajax/channel/subscriptions/";
-            string formUrl = "http://goodgame.ru";
-            string login = (string)localSettings.Values["login"];
-            string password = (string)localSettings.Values["password"];
-            string cookieHeader;
-
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, new Uri(loginUrl));
-            HttpFormUrlEncodedContent content = new HttpFormUrlEncodedContent(new[]
-            {
-                new KeyValuePair<string, string>("return", "user"),
-                new KeyValuePair<string, string>("nickname", login),
-                new KeyValuePair<string, string>("password", password),
-                new KeyValuePair<string, string>("remember", "1")
-            });
-
-            request.Content = content;
-
-            HttpClient client = new HttpClient();
-
-            var buffer = Windows.Security.Cryptography.CryptographicBuffer.ConvertStringToBinary(login + ":" + password, Windows.Security.Cryptography.BinaryStringEncoding.Utf16LE);
-            string base64token = Windows.Security.Cryptography.CryptographicBuffer.EncodeToBase64String(buffer);
-            request.Headers.Authorization = new HttpCredentialsHeaderValue("Basic", base64token);
-            request.Content = content;
-
-            HttpResponseMessage response;
-
-            try
-            {
-                response = await client.SendRequestAsync(request, HttpCompletionOption.ResponseHeadersRead);
-            }
-            catch (Exception e)
-            {
-                return;
-            }
-
-            cookieHeader = response.Headers["Set-cookie"];
-
-            /*
-                Cookies are set now
-            */
-
-            request = new HttpRequestMessage(HttpMethod.Get, new Uri(formUrl));
-            response = await client.SendRequestAsync(request, HttpCompletionOption.ResponseHeadersRead);
-
-            request = new HttpRequestMessage(HttpMethod.Get, new Uri(subscriptionUrl));
-            response = await client.SendRequestAsync(request);
-
-            string subscriptionPage = await response.Content.ReadAsStringAsync();
-
-            HtmlWeb hw = new HtmlWeb();
-            HtmlAgilityPack.HtmlDocument doc = new HtmlDocument();
-            doc.LoadHtml(subscriptionPage);
-            var linkTags = doc.DocumentNode.Descendants("link");
-            var linkedPages = doc.DocumentNode.Descendants("a")
-                                              .Select(a => a.GetAttributeValue("href", null))
-                                              .Where(u => !String.IsNullOrEmpty(u)).ToList();
-
-            linkedPages = linkedPages.Distinct().ToList();
-
-            linkedPages.Remove("\\\"http:\\/\\/goodgame.ru\\/channels\\/favorites\\/\\\"");
-            List<string> streamers = new List<string>();
-
-            foreach (var link in linkedPages)
-            {
-                var parts = link.Split("\\/".ToCharArray());
-                streamers.Add(parts[9]);
-            }
-
-            //DisplayNotification(streamers);
-            //}
-
-            //
-            //MessageDialog md = new MessageDialog(hrefs);
-        }
-
-
-        private void Ws_MessageReceived(MessageWebSocket sender, MessageWebSocketMessageReceivedEventArgs args)
-        {
-            try
-            {
-                using (DataReader reader = args.GetDataReader())
-                {
-                    reader.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
-                    string readws = reader.ReadString(reader.UnconsumedBufferLength);
-                }
-            }
-            catch {
-            }
-        }
     }
-
 }
