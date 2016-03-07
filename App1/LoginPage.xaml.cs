@@ -1,32 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Controls.Primitives;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Navigation;
-using System.Net;
-using System.Text;
-using Windows.Web.Http;
-using System.Net.Http.Headers;
-using Windows.Web.Http.Headers;
-using Windows.Networking.Sockets;
-using Windows.Storage.Streams;
-using Windows.Security.Credentials;
 using Windows.Storage;
 using Windows.ApplicationModel.Background;
 using Windows.UI.Popups;
-using System.Text.RegularExpressions;
-using Windows.UI.Notifications;
-using HtmlAgilityPack;
-using NotificationsExtensions.ToastContent;
 using GoodGameUtils;
 using System.Diagnostics;
 
@@ -112,9 +90,10 @@ namespace App1
                 RegisterBackgroundTask();
                 RequestLockScreenAccess();
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                MessageDialog md = new MessageDialog("}|{OIIA", e.Message);
+                MessageDialog md = new MessageDialog("Exception: ", ex.Message);
+                await md.ShowAsync();
             }
 
             this.Frame.Navigate(typeof(SettingsPage));
@@ -153,9 +132,17 @@ namespace App1
             try {
                 await gg.Connect();
             }
-            catch (Exception)
+            catch (WrongCredentialsException e)
             {
-                throw;
+                MessageDialog md = new MessageDialog("Login or password is wrong, try again", e.Message);
+                await md.ShowAsync();
+                return;
+            }
+            catch (Exception e)
+            {
+                MessageDialog md = new MessageDialog("Exception: ", e.Message);
+                await md.ShowAsync();
+                //continue;
             }
 
             List<FavoriteChannel> channels;

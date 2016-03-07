@@ -1,18 +1,14 @@
 ﻿using HtmlAgilityPack;
 using NotificationsExtensions.ToastContent;
-/*using MetroLog;
-using MetroLog.Targets;*/
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.UI.Notifications;
 using Windows.Web.Http;
 using Windows.Web.Http.Headers;
+using Newtonsoft.Json;
 
 namespace GoodGameUtils
 {
@@ -136,13 +132,13 @@ namespace GoodGameUtils
             if (streams == null || streams.Count == 0)
                 return;
 
-            var toast = ToastContentFactory.CreateToastText02();
+            var toast = ToastContentFactory.CreateToastImageAndText02();
             if (streams.Count > 1)
             {
                 foreach (var stream in streams)
                 {
                     toast.TextHeading.Text += (stream.Name + " ");
-                }           
+                }
                 toast.Launch = "http://goodgame.ru/channels/favorites/";
 
             }
@@ -151,6 +147,28 @@ namespace GoodGameUtils
                 toast.Launch = streams[0].Uri;
             }
             toast.TextBodyWrap.Text = "are now live!";
+
+            /*if (streams.Count == 1)
+            {
+                HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, new Uri("http://api2.goodgame.ru:80/streams/" + streams[0].Name));
+                HttpClient client = new HttpClient();
+                HttpResponseMessage response;
+                
+                try
+                {
+                    client.DefaultRequestHeaders.Accept.Add(new HttpMediaTypeWithQualityHeaderValue("application/json"));
+                    response = await client.SendRequestAsync(request);
+                    dynamic content = JsonConvert.DeserializeObject(await response.Content.ReadAsStringAsync());
+                    string thumb = content.channel.thumb;
+                    toast.Image.Src = thumb;
+                }
+                catch (Exception e)
+                {
+                    throw new NetworkException("SendRequestAsync get request failed", e);
+                }
+
+            }*/
+
 
             var notification = toast.CreateNotification();
             notification.Activated += Toast_Activated;
@@ -166,8 +184,8 @@ namespace GoodGameUtils
         public static void ClearAllCookies()
         {
             Windows.Web.Http.Filters.HttpBaseProtocolFilter filter = new Windows.Web.Http.Filters.HttpBaseProtocolFilter();
-            //filter.CacheControl.ReadBehavior = Windows.Web.Http.Filters.HttpCacheReadBehavior.MostRecent;
-            //filter.CacheControl.WriteBehavior = Windows.Web.Http.Filters.HttpCacheWriteBehavior.NoCache;
+            filter.CacheControl.ReadBehavior = Windows.Web.Http.Filters.HttpCacheReadBehavior.MostRecent;
+            filter.CacheControl.WriteBehavior = Windows.Web.Http.Filters.HttpCacheWriteBehavior.NoCache;
             var cookies = filter.CookieManager.GetCookies(new Uri(LOGIN_URL));
 
             foreach (HttpCookie cookie in cookies)
@@ -176,10 +194,8 @@ namespace GoodGameUtils
             }
         }
 
-        private HttpCookieCollection m_cookies;
         private string m_login;
         private string m_password;
-        //private ILogger m_log;
         private bool m_connectionEstablished = false;
 
         private const string LOGIN_URL = "http://goodgame.ru/ajax/login/";
