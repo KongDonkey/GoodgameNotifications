@@ -90,7 +90,7 @@ namespace GoodGameUtils
 
             try
             {
-                response = await client.SendRequestAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                response = await client.SendRequestAsync(request, HttpCompletionOption.ResponseContentRead);
             }
             catch (Exception e)
             {
