@@ -171,7 +171,6 @@ namespace GoodGameUtils
 
 
             var notification = toast.CreateNotification();
-            notification.Group = "Goodgame";
             notification.Activated += Toast_Activated;
 
             ToastNotificationManager.CreateToastNotifier().Show(notification);
