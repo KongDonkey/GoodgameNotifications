@@ -171,6 +171,7 @@ namespace GoodGameUtils
 
 
             var notification = toast.CreateNotification();
+            notification.Group = "Goodgame";
             notification.Activated += Toast_Activated;
 
             ToastNotificationManager.CreateToastNotifier().Show(notification);
@@ -203,10 +204,19 @@ namespace GoodGameUtils
         private const string GG_MAINPAGE_URL = "http://goodgame.ru";
     }
 
-    public struct FavoriteChannel
+    public struct FavoriteChannel : IEquatable<FavoriteChannel>
     {
+        
         public string Name;
         public string Uri;
+
+        public bool Equals(FavoriteChannel other)
+        {
+            if (this.Name == other.Name)
+                return true;
+            else
+                return false;
+        }
     }
 
     public class InvalidCredentialsException : Exception
